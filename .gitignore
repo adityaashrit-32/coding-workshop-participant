@@ -256,3 +256,11 @@ tfplan
 
 # Snyk Security Extension - AI Rules (auto-generated)
 .github/instructions/snyk_rules.instructions.md
+
+# Backend service — pip-installed dependencies (installed at deploy time, not committed)
+backend/epdm-service/psycopg/
+backend/epdm-service/psycopg_binary/
+backend/epdm-service/psycopg_binary.libs/
+backend/epdm-service/*.dist-info/
+backend/epdm-service/typing_extensions.py
+backend/epdm-service/.pip_installed
