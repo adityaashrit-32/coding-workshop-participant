@@ -33,12 +33,18 @@ export default function CompetenciesPage() {
   // Only HR may create/edit the competency library; managers may only assign
   const isHR = hasRole('hr')
 
-  const load = () => {
+  const load = async () => {
     setLoading(true)
-    Promise.all([getCompetencies(), getEmployeeCompetencies(), getEmployees()])
-      .then(([c, ec, e]) => { setCompetencies(c.data); setEmployeeComps(ec.data); setEmployees(e.data) })
-      .catch(() => notify('Failed to load competencies', 'error'))
-      .finally(() => setLoading(false))
+    try {
+      const [c, ec, e] = await Promise.all([getCompetencies(), getEmployeeCompetencies(), getEmployees()])
+      setCompetencies(c.data)
+      setEmployeeComps(ec.data)
+      setEmployees(e.data)
+    } catch {
+      notify('Failed to load competencies', 'error')
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(load, [])

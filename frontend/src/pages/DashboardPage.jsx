@@ -92,12 +92,19 @@ export default function DashboardPage() {
   const [error, setError]     = useState(null)
 
   useEffect(() => {
-    setLoading(true)
-    setError(null)
-    getDashboard()
-      .then((r) => setData(r.data))
-      .catch((e) => setError(e.response?.data?.error || 'Failed to load dashboard data'))
-      .finally(() => setLoading(false))
+    const load = async () => {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await getDashboard()
+        setData(res.data)
+      } catch (e) {
+        setError(e.response?.data?.error || 'Failed to load dashboard data')
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
   }, [])
 
   const summary           = data?.summary           || {}

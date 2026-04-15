@@ -1,30 +1,38 @@
 import {
-  Box, Button, Chip, Dialog, DialogActions,
+  Alert, Box, Button, Chip, Dialog, DialogActions,
   DialogContent, DialogTitle, IconButton, MenuItem, Paper,
-  Table, TableBody, TableCell, TableContainer, TableHead,
+  Skeleton, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, TextField, Tooltip, Typography
 } from '@mui/material'
-import { Add, Delete, Edit, LockOutlined } from '@mui/icons-material'
-import { useState } from 'react'
+import { Add, Delete, Edit, LockOutlined, Refresh } from '@mui/icons-material'
+import { useEffect, useState } from 'react'
+import { getReviews, createReview, updateReview, deleteReview, getEmployees } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../components/Notify'
-import { DUMMY_REVIEWS, DUMMY_EMPLOYEES } from '../data/dummy'
+import { useApi } from '../hooks/useApi'
 
 const EMPTY       = { employee_id: '', period: '', rating: '', comments: '', status: 'draft' }
 const STATUS_COLOR = { draft: 'default', submitted: 'warning', approved: 'success' }
 
 export default function ReviewsPage() {
-  const [reviews, setReviews]     = useState(DUMMY_REVIEWS)
-  const [employees]               = useState(DUMMY_EMPLOYEES)
-  const [open, setOpen]           = useState(false)
-  const [editing, setEditing]     = useState(null)
-  const [form, setForm]           = useState(EMPTY)
-  const [saving, setSaving]       = useState(false)
-  const { canWrite, canDelete }   = useAuth()
-  const notify                    = useNotify()
+  const { data: reviews,   loading: rLoading, error, run: runReviews }   = useApi([])
+  const { data: employees, loading: eLoading, run: runEmployees }         = useApi([])
+  const [open, setOpen]       = useState(false)
+  const [editing, setEditing] = useState(null)
+  const [form, setForm]       = useState(EMPTY)
+  const [saving, setSaving]   = useState(false)
+  const { canWrite, canDelete } = useAuth()
+  const notify = useNotify()
+
+  const load = () => {
+    runReviews(getReviews)
+    runEmployees(getEmployees)
+  }
+
+  useEffect(() => { load() }, [])
 
   const empName = (id) => {
-    const e = employees.find((x) => x.id === id)
+    const e = (employees ?? []).find((x) => x.id === id)
     return e ? `${e.first_name} ${e.last_name}` : id
   }
 
@@ -32,27 +40,41 @@ export default function ReviewsPage() {
   const openEdit   = (r)  => { setEditing(r); setForm({ ...r }); setOpen(true) }
   const set        = (k)  => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
-  const save = () => {
-    if (!form.employee_id || !form.period) { notify('Employee and period are required', 'warning'); return }
+  const save = async () => {
+    if (!form.employee_id || !form.period) {
+      notify('Employee and period are required', 'warning')
+      return
+    }
     setSaving(true)
-    setTimeout(() => {
+    try {
       if (editing) {
-        setReviews((prev) => prev.map((r) => r.id === editing.id ? { ...r, ...form } : r))
+        await updateReview(editing.id, form)
         notify('Review updated', 'success')
       } else {
-        setReviews((prev) => [...prev, { ...form, id: `r${Date.now()}`, created_at: new Date().toISOString(), updated_at: new Date().toISOString() }])
+        await createReview(form)
         notify('Review created', 'success')
       }
-      setSaving(false); setOpen(false)
-    }, 400)
+      setOpen(false)
+      runReviews(getReviews)
+    } catch (ex) {
+      notify(ex.response?.data?.error || 'Save failed', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const remove = (id) => {
+  const remove = async (id) => {
     if (!window.confirm('Delete this review?')) return
-    setReviews((prev) => prev.filter((r) => r.id !== id))
-    notify('Review deleted', 'success')
+    try {
+      await deleteReview(id)
+      notify('Review deleted', 'success')
+      runReviews(getReviews)
+    } catch (ex) {
+      notify(ex.response?.data?.error || 'Delete failed', 'error')
+    }
   }
 
+  const loading     = rLoading || eLoading
   const showActions = canWrite() || canDelete()
 
   return (
@@ -65,6 +87,14 @@ export default function ReviewsPage() {
           <Chip icon={<LockOutlined />} label="Read-only access" variant="outlined" color="default" />
         )}
       </Box>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} action={
+          <Button color="inherit" size="small" startIcon={<Refresh />} onClick={load}>Retry</Button>
+        }>
+          {error}
+        </Alert>
+      )}
 
       <TableContainer component={Paper}>
         <Table>
@@ -79,10 +109,21 @@ export default function ReviewsPage() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {reviews.length === 0 && (
-              <TableRow><TableCell colSpan={showActions ? 6 : 5} align="center">No reviews found</TableCell></TableRow>
+            {loading && Array.from({ length: 4 }).map((_, i) => (
+              <TableRow key={i}>
+                {Array.from({ length: showActions ? 6 : 5 }).map((_, j) => (
+                  <TableCell key={j}><Skeleton /></TableCell>
+                ))}
+              </TableRow>
+            ))}
+            {!loading && (reviews ?? []).length === 0 && !error && (
+              <TableRow>
+                <TableCell colSpan={showActions ? 6 : 5} align="center" sx={{ color: '#9CA3AF', py: 4 }}>
+                  No reviews found
+                </TableCell>
+              </TableRow>
             )}
-            {reviews.map((r) => (
+            {!loading && (reviews ?? []).map((r) => (
               <TableRow key={r.id} hover>
                 <TableCell>{empName(r.employee_id)}</TableCell>
                 <TableCell>{r.period}</TableCell>
@@ -122,7 +163,7 @@ export default function ReviewsPage() {
         <DialogContent>
           <Box display="flex" flexDirection="column" gap={2} mt={1}>
             <TextField label="Employee" select value={form.employee_id} onChange={set('employee_id')} required fullWidth>
-              {employees.map((e) => (
+              {(employees ?? []).map((e) => (
                 <MenuItem key={e.id} value={e.id}>{e.first_name} {e.last_name}</MenuItem>
               ))}
             </TextField>

@@ -1,14 +1,15 @@
 import {
-  Box, Button, Chip, Dialog, DialogActions,
+  Alert, Box, Button, Chip, Dialog, DialogActions,
   DialogContent, DialogTitle, IconButton, MenuItem, Paper,
-  Table, TableBody, TableCell, TableContainer, TableHead,
+  Skeleton, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, TextField, Tooltip, Typography
 } from '@mui/material'
-import { Add, Delete, LockOutlined } from '@mui/icons-material'
-import { useState } from 'react'
+import { Add, Delete, LockOutlined, Refresh } from '@mui/icons-material'
+import { useEffect, useState } from 'react'
+import { getTraining, createTraining, deleteTraining, getEmployees, getCompetencies } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../components/Notify'
-import { DUMMY_TRAINING, DUMMY_EMPLOYEES, DUMMY_COMPETENCIES } from '../data/dummy'
+import { useApi } from '../hooks/useApi'
 
 const EMPTY = {
   employee_id: '', title: '', provider: '',
@@ -16,34 +17,57 @@ const EMPTY = {
 }
 
 export default function TrainingPage() {
-  const [records, setRecords]       = useState(DUMMY_TRAINING)
-  const [employees]                 = useState(DUMMY_EMPLOYEES)
-  const [competencies]              = useState(DUMMY_COMPETENCIES)
-  const [open, setOpen]             = useState(false)
-  const [form, setForm]             = useState(EMPTY)
-  const [saving, setSaving]         = useState(false)
-  const { canWrite }                = useAuth()
-  const notify                      = useNotify()
+  const { data: records,      loading: rLoading, error, run: runRecords }      = useApi([])
+  const { data: employees,    loading: eLoading, run: runEmployees }            = useApi([])
+  const { data: competencies, loading: cLoading, run: runCompetencies }         = useApi([])
+  const [open, setOpen]     = useState(false)
+  const [form, setForm]     = useState(EMPTY)
+  const [saving, setSaving] = useState(false)
+  const { canWrite }        = useAuth()
+  const notify              = useNotify()
 
-  const empName  = (id) => { const e = employees.find((x) => x.id === id); return e ? `${e.first_name} ${e.last_name}` : id }
-  const compName = (id) => competencies.find((c) => c.id === id)?.name || '—'
+  const load = () => {
+    runRecords(getTraining)
+    runEmployees(getEmployees)
+    runCompetencies(getCompetencies)
+  }
+
+  useEffect(() => { load() }, [])
+
+  const empName  = (id) => { const e = (employees ?? []).find((x) => x.id === id); return e ? `${e.first_name} ${e.last_name}` : id }
+  const compName = (id) => (competencies ?? []).find((c) => c.id === id)?.name || '—'
   const set      = (k)  => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
-  const save = () => {
-    if (!form.employee_id || !form.title) { notify('Employee and title required', 'warning'); return }
+  const save = async () => {
+    if (!form.employee_id || !form.title) {
+      notify('Employee and title required', 'warning')
+      return
+    }
     setSaving(true)
-    setTimeout(() => {
-      setRecords((prev) => [...prev, { ...form, id: `t${Date.now()}`, created_at: new Date().toISOString() }])
+    try {
+      await createTraining(form)
       notify('Training record added', 'success')
-      setSaving(false); setOpen(false)
-    }, 400)
+      setOpen(false)
+      runRecords(getTraining)
+    } catch (ex) {
+      notify(ex.response?.data?.error || 'Save failed', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const remove = (id) => {
+  const remove = async (id) => {
     if (!window.confirm('Delete this training record?')) return
-    setRecords((prev) => prev.filter((r) => r.id !== id))
-    notify('Deleted', 'success')
+    try {
+      await deleteTraining(id)
+      notify('Deleted', 'success')
+      runRecords(getTraining)
+    } catch (ex) {
+      notify(ex.response?.data?.error || 'Delete failed', 'error')
+    }
   }
+
+  const loading = rLoading || eLoading || cLoading
 
   return (
     <Box>
@@ -57,6 +81,14 @@ export default function TrainingPage() {
           <Chip icon={<LockOutlined />} label="Read-only access" variant="outlined" color="default" />
         )}
       </Box>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} action={
+          <Button color="inherit" size="small" startIcon={<Refresh />} onClick={load}>Retry</Button>
+        }>
+          {error}
+        </Alert>
+      )}
 
       <TableContainer component={Paper}>
         <Table>
@@ -72,12 +104,21 @@ export default function TrainingPage() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {records.length === 0 && (
+            {loading && Array.from({ length: 4 }).map((_, i) => (
+              <TableRow key={i}>
+                {Array.from({ length: canWrite() ? 7 : 6 }).map((_, j) => (
+                  <TableCell key={j}><Skeleton /></TableCell>
+                ))}
+              </TableRow>
+            ))}
+            {!loading && (records ?? []).length === 0 && !error && (
               <TableRow>
-                <TableCell colSpan={canWrite() ? 7 : 6} align="center">No training records found</TableCell>
+                <TableCell colSpan={canWrite() ? 7 : 6} align="center" sx={{ color: '#9CA3AF', py: 4 }}>
+                  No training records found
+                </TableCell>
               </TableRow>
             )}
-            {records.map((r) => (
+            {!loading && (records ?? []).map((r) => (
               <TableRow key={r.id} hover>
                 <TableCell>{empName(r.employee_id)}</TableCell>
                 <TableCell>{r.title}</TableCell>
@@ -105,7 +146,7 @@ export default function TrainingPage() {
         <DialogContent>
           <Box display="flex" flexDirection="column" gap={2} mt={1}>
             <TextField label="Employee" select value={form.employee_id} onChange={set('employee_id')} required fullWidth>
-              {employees.map((e) => <MenuItem key={e.id} value={e.id}>{e.first_name} {e.last_name}</MenuItem>)}
+              {(employees ?? []).map((e) => <MenuItem key={e.id} value={e.id}>{e.first_name} {e.last_name}</MenuItem>)}
             </TextField>
             <TextField label="Training Title" value={form.title} onChange={set('title')} required fullWidth />
             <TextField label="Provider" value={form.provider} onChange={set('provider')} fullWidth />
@@ -117,7 +158,7 @@ export default function TrainingPage() {
             </Box>
             <TextField label="Related Competency" select value={form.competency_id} onChange={set('competency_id')} fullWidth>
               <MenuItem value="">None</MenuItem>
-              {competencies.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
+              {(competencies ?? []).map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
             </TextField>
             <TextField label="Notes" multiline rows={2} value={form.notes} onChange={set('notes')} fullWidth />
           </Box>

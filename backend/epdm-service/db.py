@@ -12,14 +12,19 @@ logger = logging.getLogger(__name__)
 
 _is_local = os.getenv("IS_LOCAL", "true") == "true"
 
+# Resolve host: reject placeholder values that cause socket errors
+_pg_host = os.getenv("POSTGRES_HOST", "localhost")
+if not _pg_host or _pg_host in (":", ":1", "0", ""):
+    _pg_host = "localhost"
+
 PG_CONFIG = (
-    f"host={os.getenv('POSTGRES_HOST', 'localhost')} "
+    f"host={_pg_host} "
     f"port={os.getenv('POSTGRES_PORT', '5432')} "
     f"user={os.getenv('POSTGRES_USER', 'postgres')} "
     f"password={os.getenv('POSTGRES_PASS', 'postgres123')} "
     f"dbname={os.getenv('POSTGRES_NAME', 'postgres')} "
-    f"connect_timeout=15"
-    + ("" if _is_local else " sslmode=require")
+    f"connect_timeout=15 "
+    + ("sslmode=disable" if _is_local else "sslmode=require")
 )
 
 _conn = None
@@ -122,8 +127,10 @@ def get_conn():
     global _conn
     try:
         if _conn is None or _conn.closed:
+            logger.info("Connecting to PostgreSQL at %s", _pg_host)
             _conn = connect(PG_CONFIG)
             _conn.autocommit = False
+            logger.info("PostgreSQL connected")
         return _conn
     except Exception as e:
         logger.error("DB connection error: %s", e)

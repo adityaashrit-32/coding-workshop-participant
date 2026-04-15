@@ -1,14 +1,15 @@
 import {
-  Box, Button, Chip, CircularProgress, Dialog, DialogActions,
+  Alert, Box, Button, Chip, Dialog, DialogActions,
   DialogContent, DialogTitle, IconButton, MenuItem, Paper,
   Skeleton, Table, TableBody, TableCell, TableContainer, TableHead,
-  TableRow, TextField, Tooltip, Typography, Alert
+  TableRow, TextField, Tooltip, Typography
 } from '@mui/material'
 import { Add, Delete, Edit, LockOutlined, Refresh } from '@mui/icons-material'
 import { useEffect, useState } from 'react'
 import { getEmployees, createEmployee, updateEmployee, deleteEmployee } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../components/Notify'
+import { useApi } from '../hooks/useApi'
 
 const EMPTY = {
   first_name: '', last_name: '', email: '', department: '',
@@ -16,26 +17,17 @@ const EMPTY = {
 }
 
 export default function EmployeesPage() {
-  const [employees, setEmployees] = useState([])
-  const [loading, setLoading]     = useState(true)
-  const [error, setError]         = useState(null)
-  const [open, setOpen]           = useState(false)
-  const [editing, setEditing]     = useState(null)
-  const [form, setForm]           = useState(EMPTY)
-  const [saving, setSaving]       = useState(false)
-  const { canWrite, canDelete }   = useAuth()
-  const notify                    = useNotify()
+  const { data: employees, loading, error, run } = useApi([])
+  const [open, setOpen]     = useState(false)
+  const [editing, setEditing] = useState(null)
+  const [form, setForm]     = useState(EMPTY)
+  const [saving, setSaving] = useState(false)
+  const { canWrite, canDelete } = useAuth()
+  const notify = useNotify()
 
-  const load = () => {
-    setLoading(true)
-    setError(null)
-    getEmployees()
-      .then((r) => setEmployees(r.data))
-      .catch((e) => setError(e.response?.data?.error || 'Failed to load employees'))
-      .finally(() => setLoading(false))
-  }
+  const load = () => run(getEmployees)
 
-  useEffect(load, [])
+  useEffect(() => { load() }, [])
 
   const openCreate = () => { setEditing(null); setForm(EMPTY); setOpen(true) }
   const openEdit   = (emp) => {
@@ -120,14 +112,14 @@ export default function EmployeesPage() {
                 ))}
               </TableRow>
             ))}
-            {!loading && employees.length === 0 && !error && (
+            {!loading && (employees ?? []).length === 0 && !error && (
               <TableRow>
                 <TableCell colSpan={showActions ? 6 : 5} align="center" sx={{ color: '#9CA3AF', py: 4 }}>
                   No employees found
                 </TableCell>
               </TableRow>
             )}
-            {!loading && employees.map((emp) => (
+            {!loading && (employees ?? []).map((emp) => (
               <TableRow key={emp.id} hover>
                 <TableCell>{emp.first_name} {emp.last_name}</TableCell>
                 <TableCell>{emp.email}</TableCell>

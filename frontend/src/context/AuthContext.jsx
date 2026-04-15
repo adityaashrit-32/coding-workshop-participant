@@ -15,27 +15,31 @@ export function AuthProvider({ children }) {
     return null
   })
 
+  const _persist = useCallback((token, user) => {
+    if (!token) throw new Error('No token in server response')
+    // user object may be absent on some server versions — build a minimal one from the JWT payload
+    const resolved = user ?? (() => {
+      try {
+        const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+        return { id: payload.sub, email: payload.email, role: payload.role }
+      } catch { return null }
+    })()
+    if (!resolved) throw new Error('Could not resolve user from server response')
+    localStorage.setItem('token', token)
+    localStorage.setItem('user', JSON.stringify(resolved))
+    setUser(resolved)
+    return resolved
+  }, [])
+
   const signIn = useCallback(async (email, password) => {
     const { data } = await apiLogin({ email, password })
-    const token = data?.token
-    const user  = data?.user
-    if (!token || !user) throw new Error('Invalid response from server')
-    localStorage.setItem('token', token)
-    localStorage.setItem('user', JSON.stringify(user))
-    setUser(user)
-    return user
-  }, [])
+    return _persist(data?.token, data?.user)
+  }, [_persist])
 
   const signUp = useCallback(async (email, password, role) => {
     const { data } = await apiRegister({ email, password, role })
-    const token = data?.token
-    const user  = data?.user
-    if (!token || !user) throw new Error('Invalid response from server')
-    localStorage.setItem('token', token)
-    localStorage.setItem('user', JSON.stringify(user))
-    setUser(user)
-    return user
-  }, [])
+    return _persist(data?.token, data?.user)
+  }, [_persist])
 
   const signOut = useCallback(() => {
     localStorage.removeItem('token')

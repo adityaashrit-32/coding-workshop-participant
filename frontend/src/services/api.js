@@ -1,15 +1,11 @@
 import axios from 'axios'
 
-// All requests go through the Vite dev-server proxy: /api/* → Lambda.
-// The browser stays on localhost:3000 (same origin) so no CORS preflight fires.
-// In production VITE_API_URL is the CloudFront domain.
-// const BASE_URL = (() => {
-//   const apiUrl = import.meta.env.VITE_API_URL || ''
-//   return apiUrl && !apiUrl.includes('localhost')
-//     ? `${apiUrl}/api/epdm-service`
-//     : '/api'
-// })()
-const BASE_URL = "http://localhost:3001"
+// In dev:  Vite proxies /api/* → http://localhost:8000 (Flask), same-origin, no CORS.
+// In prod:  VITE_API_URL is the CloudFront domain; requests go to /api/epdm-service/*.
+const BASE_URL = (() => {
+  const apiUrl = import.meta.env.VITE_API_URL || ''
+  return apiUrl && !apiUrl.includes('localhost') ? `${apiUrl}/api/epdm-service` : '/api'
+})()
 const api = axios.create({ baseURL: BASE_URL })
 
 api.interceptors.request.use((config) => {
