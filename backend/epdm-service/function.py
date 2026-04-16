@@ -100,6 +100,7 @@ def handler(event=None, context=None):
             _schema_initialized = True
         except Exception as e:
             logger.error("Schema init failed: %s", e)
+            _schema_initialized = False
             return error(f"Database initialization failed: {e}", 500)
 
     # Resolve path — support both Lambda Function URL and API Gateway formats

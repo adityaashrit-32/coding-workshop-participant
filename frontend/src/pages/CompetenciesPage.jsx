@@ -8,10 +8,13 @@ import { Add, Delete, Edit, LockOutlined } from '@mui/icons-material'
 import { useEffect, useState } from 'react'
 import {
   getCompetencies, createCompetency, updateCompetency, deleteCompetency,
-  getEmployeeCompetencies, assignCompetency, getEmployees
+  getEmployeeCompetencies, assignCompetency, getAllEmployees
 } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../components/Notify'
+import { useSearch } from '../hooks/useSearch'
+import SearchBar from '../components/SearchBar'
+import { DUMMY_COMPETENCIES, DUMMY_EMPLOYEES } from '../data/dummy'
 
 const COMP_EMPTY = { name: '', description: '', category: '' }
 const EC_EMPTY   = { employee_id: '', competency_id: '', current_level: 1, target_level: 3 }
@@ -24,6 +27,7 @@ export default function CompetenciesPage() {
   const [compOpen, setCompOpen]           = useState(false)
   const [assignOpen, setAssignOpen]       = useState(false)
   const [editing, setEditing]             = useState(null)
+  const [editingEc, setEditingEc]         = useState(null)
   const [compForm, setCompForm]           = useState(COMP_EMPTY)
   const [ecForm, setEcForm]               = useState(EC_EMPTY)
   const [saving, setSaving]               = useState(false)
@@ -33,13 +37,18 @@ export default function CompetenciesPage() {
   // Only HR may create/edit the competency library; managers may only assign
   const isHR = hasRole('hr')
 
+  const { query, setQuery, filtered: visibleComps } = useSearch(competencies, [
+    (c) => c.name,
+    (c) => c.category,
+  ])
+
   const load = async () => {
     setLoading(true)
     try {
-      const [c, ec, e] = await Promise.all([getCompetencies(), getEmployeeCompetencies(), getEmployees()])
-      setCompetencies(c.data)
-      setEmployeeComps(ec.data)
-      setEmployees(e.data)
+      const [c, ec, e] = await Promise.all([getCompetencies(), getEmployeeCompetencies(), getAllEmployees()])
+      setCompetencies(c.data?.length ? c.data : DUMMY_COMPETENCIES)
+      setEmployeeComps(ec.data ?? [])
+      setEmployees(e.data ?? [])
     } catch {
       notify('Failed to load competencies', 'error')
     } finally {
@@ -47,7 +56,7 @@ export default function CompetenciesPage() {
     }
   }
 
-  useEffect(load, [])
+  useEffect(() => { load() }, [])
 
   const setC = (k) => (e) => setCompForm((f) => ({ ...f, [k]: e.target.value }))
   const setE = (k) => (e) => setEcForm((f) => ({ ...f, [k]: e.target.value }))
@@ -71,8 +80,8 @@ export default function CompetenciesPage() {
     setSaving(true)
     try {
       await assignCompetency(ecForm)
-      notify('Competency assigned', 'success')
-      setAssignOpen(false); load()
+      notify(editingEc ? 'Assignment updated' : 'Competency assigned', 'success')
+      setAssignOpen(false); setEditingEc(null); load()
     } catch (ex) { notify(ex.response?.data?.error || 'Save failed', 'error') }
     finally { setSaving(false) }
   }
@@ -90,9 +99,10 @@ export default function CompetenciesPage() {
 
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3} gap={2} flexWrap="wrap">
         <Typography variant="h5" fontWeight={700}>Competencies & Skills</Typography>
-        <Box display="flex" gap={1}>
+        <Box display="flex" alignItems="center" gap={1.5} flexWrap="wrap">
+          <SearchBar value={query} onChange={setQuery} placeholder="Search competencies…" />
           {canWrite() ? (
             <Button variant="outlined" startIcon={<Add />}
               onClick={() => { setAssignOpen(true); setEcForm(EC_EMPTY) }}>
@@ -126,12 +136,14 @@ export default function CompetenciesPage() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {competencies.length === 0 && (
+                {visibleComps.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={isHR ? 4 : 3} align="center">No competencies defined</TableCell>
+                    <TableCell colSpan={isHR ? 4 : 3} align="center" sx={{ color: '#9CA3AF', py: 3 }}>
+                      {query ? `No results for "${query}"` : 'No competencies defined'}
+                    </TableCell>
                   </TableRow>
                 )}
-                {competencies.map((c) => (
+                {visibleComps.map((c) => (
                   <TableRow key={c.id} hover>
                     <TableCell>{c.name}</TableCell>
                     <TableCell>{c.category || '—'}</TableCell>
@@ -172,12 +184,13 @@ export default function CompetenciesPage() {
                   <TableCell>Category</TableCell>
                   <TableCell>Current / Target</TableCell>
                   <TableCell>Gap</TableCell>
+                  {canWrite() && <TableCell align="right">Actions</TableCell>}
                 </TableRow>
               </TableHead>
               <TableBody>
                 {employeeComps.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={5} align="center">No assignments yet</TableCell>
+                    <TableCell colSpan={canWrite() ? 6 : 5} align="center">No assignments yet</TableCell>
                   </TableRow>
                 )}
                 {employeeComps.map((ec) => (
@@ -196,6 +209,24 @@ export default function CompetenciesPage() {
                           color={ec.gap > 1 ? 'error' : ec.gap === 1 ? 'warning' : 'success'} />
                       </Box>
                     </TableCell>
+                    {canWrite() && (
+                      <TableCell align="right">
+                        <Tooltip title="Edit levels">
+                          <IconButton size="small" onClick={() => {
+                            setEditingEc(ec)
+                            setEcForm({
+                              employee_id:   ec.employee_id,
+                              competency_id: ec.competency_id,
+                              current_level: ec.current_level,
+                              target_level:  ec.target_level,
+                            })
+                            setAssignOpen(true)
+                          }}>
+                            <Edit fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
@@ -221,14 +252,20 @@ export default function CompetenciesPage() {
       </Dialog>
 
       {/* Assign dialog — hr + manager */}
-      <Dialog open={assignOpen} onClose={() => setAssignOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Assign Competency to Employee</DialogTitle>
+      <Dialog open={assignOpen} onClose={() => { setAssignOpen(false); setEditingEc(null) }} maxWidth="sm" fullWidth>
+        <DialogTitle>{editingEc ? 'Edit Skill Levels' : 'Assign Competency to Employee'}</DialogTitle>
         <DialogContent>
           <Box display="flex" flexDirection="column" gap={2} mt={1}>
-            <TextField label="Employee" select value={ecForm.employee_id} onChange={setE('employee_id')} required fullWidth>
-              {employees.map((e) => <MenuItem key={e.id} value={e.id}>{e.first_name} {e.last_name}</MenuItem>)}
+            <TextField label="Employee" select value={ecForm.employee_id} onChange={setE('employee_id')} required fullWidth
+              disabled={!!editingEc}>
+              {employees.map((e) => (
+                <MenuItem key={e.id} value={e.id}>
+                  {e.first_name} {e.last_name}{e.status === 'inactive' ? ' (inactive)' : ''}
+                </MenuItem>
+              ))}
             </TextField>
-            <TextField label="Competency" select value={ecForm.competency_id} onChange={setE('competency_id')} required fullWidth>
+            <TextField label="Competency" select value={ecForm.competency_id} onChange={setE('competency_id')} required fullWidth
+              disabled={!!editingEc}>
               {competencies.map((c) => <MenuItem key={c.id} value={c.id}>{c.name}</MenuItem>)}
             </TextField>
             <Box display="flex" gap={2}>
@@ -240,7 +277,7 @@ export default function CompetenciesPage() {
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setAssignOpen(false)}>Cancel</Button>
+          <Button onClick={() => { setAssignOpen(false); setEditingEc(null) }}>Cancel</Button>
           <Button variant="contained" onClick={saveAssign} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button>
         </DialogActions>
       </Dialog>

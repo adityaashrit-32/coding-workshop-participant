@@ -8,11 +8,14 @@ import { Add, Delete, Edit, ExpandMore, LockOutlined, Refresh } from '@mui/icons
 import { useEffect, useState } from 'react'
 import {
   getPlans, createPlan, updatePlan, deletePlan,
-  createGoal, updateGoal, getEmployees
+  createGoal, updateGoal, getAllEmployees
 } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../components/Notify'
 import { useApi } from '../hooks/useApi'
+import { useSearch } from '../hooks/useSearch'
+import SearchBar from '../components/SearchBar'
+import { DUMMY_PLANS, DUMMY_EMPLOYEES } from '../data/dummy'
 
 const PLAN_EMPTY   = { employee_id: '', title: '', description: '', start_date: '', end_date: '', status: 'active' }
 const GOAL_EMPTY   = { plan_id: '', title: '', description: '', progress: 0, due_date: '', status: 'pending' }
@@ -20,8 +23,8 @@ const STATUS_COLOR = { active: 'success', completed: 'info', cancelled: 'default
 const GOAL_COLOR   = { pending: 'default', in_progress: 'warning', completed: 'success' }
 
 export default function PlansPage() {
-  const { data: plans,     loading: pLoading, error, run: runPlans }     = useApi([])
-  const { data: employees, loading: eLoading, run: runEmployees }         = useApi([])
+  const { data: plans,     loading: pLoading, error, run: runPlans }     = useApi([], DUMMY_PLANS)
+  const { data: employees, loading: eLoading, run: runEmployees }         = useApi([], null)
   const [planOpen, setPlanOpen]       = useState(false)
   const [goalOpen, setGoalOpen]       = useState(false)
   const [editingPlan, setEditingPlan] = useState(null)
@@ -34,7 +37,7 @@ export default function PlansPage() {
 
   const load = () => {
     runPlans(getPlans)
-    runEmployees(getEmployees)
+    runEmployees(getAllEmployees)
   }
 
   useEffect(() => { load() }, [])
@@ -103,18 +106,27 @@ export default function PlansPage() {
 
   const loading = pLoading || eLoading
 
+  const { query, setQuery, filtered: visiblePlans } = useSearch(plans, [
+    (p) => empName(p.employee_id),
+    (p) => p.title,
+    (p) => p.status,
+  ])
+
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3} gap={2} flexWrap="wrap">
         <Typography variant="h5" fontWeight={700}>Development Plans</Typography>
-        {canWrite() ? (
-          <Button variant="contained" startIcon={<Add />}
-            onClick={() => { setEditingPlan(null); setPlanForm(PLAN_EMPTY); setPlanOpen(true) }}>
-            New Plan
-          </Button>
-        ) : (
-          <Chip icon={<LockOutlined />} label="Read-only access" variant="outlined" color="default" />
-        )}
+        <Box display="flex" alignItems="center" gap={1.5} flexWrap="wrap">
+          <SearchBar value={query} onChange={setQuery} placeholder="Search plans…" />
+          {canWrite() ? (
+            <Button variant="contained" startIcon={<Add />}
+              onClick={() => { setEditingPlan(null); setPlanForm(PLAN_EMPTY); setPlanOpen(true) }}>
+              New Plan
+            </Button>
+          ) : (
+            <Chip icon={<LockOutlined />} label="Read-only access" variant="outlined" color="default" />
+          )}
+        </Box>
       </Box>
 
       {error && (
@@ -129,11 +141,13 @@ export default function PlansPage() {
         <Skeleton key={i} height={64} sx={{ mb: 1, borderRadius: 2 }} />
       ))}
 
-      {!loading && (plans ?? []).length === 0 && !error && (
-        <Typography color="text.secondary">No development plans found.</Typography>
+      {!loading && visiblePlans.length === 0 && !error && (
+        <Typography color="text.secondary">
+          {query ? `No results for "${query}"` : 'No development plans found.'}
+        </Typography>
       )}
 
-      {!loading && (plans ?? []).map((plan) => (
+      {!loading && visiblePlans.map((plan) => (
         <Accordion key={plan.id} sx={{ mb: 1 }}>
           <AccordionSummary expandIcon={<ExpandMore />}>
             <Box display="flex" alignItems="center" gap={2} width="100%">

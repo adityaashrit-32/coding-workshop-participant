@@ -72,7 +72,7 @@ def performance_distribution(event):
                     CASE
                         WHEN rating >= 4.5 THEN 'Exceptional'
                         WHEN rating >= 3.5 THEN 'Strong'
-                        WHEN rating >= 2.5 THEN 'Meets'
+                        WHEN rating >= 2.5 THEN 'Average'
                         WHEN rating >= 1.5 THEN 'Below'
                         ELSE                    'Poor'
                     END                  AS band,

@@ -6,17 +6,20 @@ import {
 } from '@mui/material'
 import { Add, Delete, Edit, LockOutlined, Refresh } from '@mui/icons-material'
 import { useEffect, useState } from 'react'
-import { getReviews, createReview, updateReview, deleteReview, getEmployees } from '../services/api'
+import { getReviews, createReview, updateReview, deleteReview, getAllEmployees } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../components/Notify'
 import { useApi } from '../hooks/useApi'
+import { useSearch } from '../hooks/useSearch'
+import SearchBar from '../components/SearchBar'
+import { DUMMY_REVIEWS, DUMMY_EMPLOYEES } from '../data/dummy'
 
 const EMPTY       = { employee_id: '', period: '', rating: '', comments: '', status: 'draft' }
 const STATUS_COLOR = { draft: 'default', submitted: 'warning', approved: 'success' }
 
 export default function ReviewsPage() {
-  const { data: reviews,   loading: rLoading, error, run: runReviews }   = useApi([])
-  const { data: employees, loading: eLoading, run: runEmployees }         = useApi([])
+  const { data: reviews,   loading: rLoading, error, run: runReviews }   = useApi([], DUMMY_REVIEWS)
+  const { data: employees, loading: eLoading, run: runEmployees }         = useApi([], null)
   const [open, setOpen]       = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm]       = useState(EMPTY)
@@ -26,7 +29,7 @@ export default function ReviewsPage() {
 
   const load = () => {
     runReviews(getReviews)
-    runEmployees(getEmployees)
+    runEmployees(getAllEmployees)
   }
 
   useEffect(() => { load() }, [])
@@ -77,15 +80,25 @@ export default function ReviewsPage() {
   const loading     = rLoading || eLoading
   const showActions = canWrite() || canDelete()
 
+  const { query, setQuery, filtered: visibleReviews } = useSearch(reviews, [
+    (r) => empName(r.employee_id),
+    (r) => String(r.rating ?? ''),
+    (r) => r.status,
+    (r) => r.period,
+  ])
+
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3} gap={2} flexWrap="wrap">
         <Typography variant="h5" fontWeight={700}>Performance Reviews</Typography>
-        {canWrite() ? (
-          <Button variant="contained" startIcon={<Add />} onClick={openCreate}>New Review</Button>
-        ) : (
-          <Chip icon={<LockOutlined />} label="Read-only access" variant="outlined" color="default" />
-        )}
+        <Box display="flex" alignItems="center" gap={1.5} flexWrap="wrap">
+          <SearchBar value={query} onChange={setQuery} placeholder="Search reviews…" />
+          {canWrite() ? (
+            <Button variant="contained" startIcon={<Add />} onClick={openCreate}>New Review</Button>
+          ) : (
+            <Chip icon={<LockOutlined />} label="Read-only access" variant="outlined" color="default" />
+          )}
+        </Box>
       </Box>
 
       {error && (
@@ -116,14 +129,14 @@ export default function ReviewsPage() {
                 ))}
               </TableRow>
             ))}
-            {!loading && (reviews ?? []).length === 0 && !error && (
+            {!loading && visibleReviews.length === 0 && !error && (
               <TableRow>
                 <TableCell colSpan={showActions ? 6 : 5} align="center" sx={{ color: '#9CA3AF', py: 4 }}>
-                  No reviews found
+                  {query ? `No results for "${query}"` : 'No reviews found'}
                 </TableCell>
               </TableRow>
             )}
-            {!loading && (reviews ?? []).map((r) => (
+            {!loading && visibleReviews.map((r) => (
               <TableRow key={r.id} hover>
                 <TableCell>{empName(r.employee_id)}</TableCell>
                 <TableCell>{r.period}</TableCell>

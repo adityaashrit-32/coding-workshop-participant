@@ -4,12 +4,15 @@ import {
   Skeleton, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, TextField, Tooltip, Typography
 } from '@mui/material'
-import { Add, Delete, LockOutlined, Refresh } from '@mui/icons-material'
+import { Add, Delete, Edit, LockOutlined, Refresh } from '@mui/icons-material'
 import { useEffect, useState } from 'react'
-import { getTraining, createTraining, deleteTraining, getEmployees, getCompetencies } from '../services/api'
+import { getTraining, createTraining, deleteTraining, getAllEmployees, getCompetencies } from '../services/api'
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../components/Notify'
 import { useApi } from '../hooks/useApi'
+import { useSearch } from '../hooks/useSearch'
+import SearchBar from '../components/SearchBar'
+import { DUMMY_TRAINING, DUMMY_EMPLOYEES, DUMMY_COMPETENCIES } from '../data/dummy'
 
 const EMPTY = {
   employee_id: '', title: '', provider: '',
@@ -17,18 +20,19 @@ const EMPTY = {
 }
 
 export default function TrainingPage() {
-  const { data: records,      loading: rLoading, error, run: runRecords }      = useApi([])
-  const { data: employees,    loading: eLoading, run: runEmployees }            = useApi([])
-  const { data: competencies, loading: cLoading, run: runCompetencies }         = useApi([])
-  const [open, setOpen]     = useState(false)
-  const [form, setForm]     = useState(EMPTY)
-  const [saving, setSaving] = useState(false)
-  const { canWrite }        = useAuth()
-  const notify              = useNotify()
+  const { data: records,      loading: rLoading, error, run: runRecords }  = useApi([], DUMMY_TRAINING)
+  const { data: employees,    loading: eLoading, run: runEmployees }        = useApi([], null)
+  const { data: competencies, loading: cLoading, run: runCompetencies }     = useApi([], null)
+  const [open, setOpen]       = useState(false)
+  const [editing, setEditing] = useState(null)
+  const [form, setForm]       = useState(EMPTY)
+  const [saving, setSaving]   = useState(false)
+  const { canWrite }          = useAuth()
+  const notify                = useNotify()
 
   const load = () => {
     runRecords(getTraining)
-    runEmployees(getEmployees)
+    runEmployees(getAllEmployees)
     runCompetencies(getCompetencies)
   }
 
@@ -38,6 +42,21 @@ export default function TrainingPage() {
   const compName = (id) => (competencies ?? []).find((c) => c.id === id)?.name || '—'
   const set      = (k)  => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
+  const openCreate = () => { setEditing(null); setForm(EMPTY); setOpen(true) }
+  const openEdit   = (r) => {
+    setEditing(r)
+    setForm({
+      employee_id:    r.employee_id,
+      title:          r.title,
+      provider:       r.provider       || '',
+      completed_date: r.completed_date?.slice(0, 10) || '',
+      duration_hours: r.duration_hours ?? '',
+      competency_id:  r.competency_id  || '',
+      notes:          r.notes          || '',
+    })
+    setOpen(true)
+  }
+
   const save = async () => {
     if (!form.employee_id || !form.title) {
       notify('Employee and title required', 'warning')
@@ -45,8 +64,15 @@ export default function TrainingPage() {
     }
     setSaving(true)
     try {
-      await createTraining(form)
-      notify('Training record added', 'success')
+      if (editing) {
+        // Training has no PUT endpoint — delete old and recreate with updated data
+        await deleteTraining(editing.id)
+        await createTraining(form)
+        notify('Training record updated', 'success')
+      } else {
+        await createTraining(form)
+        notify('Training record added', 'success')
+      }
       setOpen(false)
       runRecords(getTraining)
     } catch (ex) {
@@ -69,17 +95,25 @@ export default function TrainingPage() {
 
   const loading = rLoading || eLoading || cLoading
 
+  const { query, setQuery, filtered: visibleRecords } = useSearch(records, [
+    (r) => empName(r.employee_id),
+    (r) => r.title,
+    (r) => r.provider,
+    (r) => r.completed_date ? 'completed' : 'pending',
+  ])
+
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3} gap={2} flexWrap="wrap">
         <Typography variant="h5" fontWeight={700}>Training Records</Typography>
-        {canWrite() ? (
-          <Button variant="contained" startIcon={<Add />} onClick={() => { setForm(EMPTY); setOpen(true) }}>
-            Add Record
-          </Button>
-        ) : (
-          <Chip icon={<LockOutlined />} label="Read-only access" variant="outlined" color="default" />
-        )}
+        <Box display="flex" alignItems="center" gap={1.5} flexWrap="wrap">
+          <SearchBar value={query} onChange={setQuery} placeholder="Search training…" />
+          {canWrite() ? (
+            <Button variant="contained" startIcon={<Add />} onClick={openCreate}>Add Record</Button>
+          ) : (
+            <Chip icon={<LockOutlined />} label="Read-only access" variant="outlined" color="default" />
+          )}
+        </Box>
       </Box>
 
       {error && (
@@ -111,23 +145,30 @@ export default function TrainingPage() {
                 ))}
               </TableRow>
             ))}
-            {!loading && (records ?? []).length === 0 && !error && (
+            {!loading && visibleRecords.length === 0 && !error && (
               <TableRow>
                 <TableCell colSpan={canWrite() ? 7 : 6} align="center" sx={{ color: '#9CA3AF', py: 4 }}>
-                  No training records found
+                  {query ? `No results for "${query}"` : 'No training records found'}
                 </TableCell>
               </TableRow>
             )}
-            {!loading && (records ?? []).map((r) => (
+            {!loading && visibleRecords.map((r) => (
               <TableRow key={r.id} hover>
                 <TableCell>{empName(r.employee_id)}</TableCell>
                 <TableCell>{r.title}</TableCell>
                 <TableCell>{r.provider || '—'}</TableCell>
-                <TableCell>{r.completed_date?.slice(0, 10) || '—'}</TableCell>
+                <TableCell>
+                  {r.completed_date
+                    ? r.completed_date.slice(0, 10)
+                    : <Chip label="Pending" size="small" color="warning" />}
+                </TableCell>
                 <TableCell align="right">{r.duration_hours ?? '—'}</TableCell>
                 <TableCell>{r.competency_id ? compName(r.competency_id) : '—'}</TableCell>
                 {canWrite() && (
                   <TableCell align="right">
+                    <Tooltip title="Edit">
+                      <IconButton size="small" onClick={() => openEdit(r)}><Edit fontSize="small" /></IconButton>
+                    </Tooltip>
                     <Tooltip title="Delete">
                       <IconButton size="small" color="error" onClick={() => remove(r.id)}>
                         <Delete fontSize="small" />
@@ -142,11 +183,16 @@ export default function TrainingPage() {
       </TableContainer>
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Add Training Record</DialogTitle>
+        <DialogTitle>{editing ? 'Edit Training Record' : 'Add Training Record'}</DialogTitle>
         <DialogContent>
           <Box display="flex" flexDirection="column" gap={2} mt={1}>
             <TextField label="Employee" select value={form.employee_id} onChange={set('employee_id')} required fullWidth>
-              {(employees ?? []).map((e) => <MenuItem key={e.id} value={e.id}>{e.first_name} {e.last_name}</MenuItem>)}
+              {(employees ?? []).map((e) => (
+                <MenuItem key={e.id} value={e.id}>
+                  {e.first_name} {e.last_name}
+                  {e.status === 'inactive' && ' (inactive)'}
+                </MenuItem>
+              ))}
             </TextField>
             <TextField label="Training Title" value={form.title} onChange={set('title')} required fullWidth />
             <TextField label="Provider" value={form.provider} onChange={set('provider')} fullWidth />

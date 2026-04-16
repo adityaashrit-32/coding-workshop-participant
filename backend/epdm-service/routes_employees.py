@@ -23,12 +23,16 @@ def _row(row):
 
 def list_employees(event):
     require_auth(event, ALL_ROLES)
-    dept = get_query_param(event, "department")
+    dept   = get_query_param(event, "department")
     status = get_query_param(event, "status", "active")
     conn = get_conn()
     with conn.cursor() as cur:
-        sql = f"SELECT {','.join(COLS)} FROM employees WHERE status = %s"
-        params = [status]
+        if status == "all":
+            sql    = f"SELECT {','.join(COLS)} FROM employees WHERE 1=1"
+            params = []
+        else:
+            sql    = f"SELECT {','.join(COLS)} FROM employees WHERE status = %s"
+            params = [status]
         if dept:
             sql += " AND department = %s"
             params.append(dept)

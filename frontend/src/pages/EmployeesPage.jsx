@@ -10,6 +10,9 @@ import { getEmployees, createEmployee, updateEmployee, deleteEmployee } from '..
 import { useAuth } from '../context/AuthContext'
 import { useNotify } from '../components/Notify'
 import { useApi } from '../hooks/useApi'
+import { useSearch } from '../hooks/useSearch'
+import SearchBar from '../components/SearchBar'
+import { DUMMY_EMPLOYEES } from '../data/dummy'
 
 const EMPTY = {
   first_name: '', last_name: '', email: '', department: '',
@@ -17,7 +20,7 @@ const EMPTY = {
 }
 
 export default function EmployeesPage() {
-  const { data: employees, loading, error, run } = useApi([])
+  const { data: employees, loading, error, run } = useApi([], DUMMY_EMPLOYEES)
   const [open, setOpen]     = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm]     = useState(EMPTY)
@@ -28,6 +31,14 @@ export default function EmployeesPage() {
   const load = () => run(getEmployees)
 
   useEffect(() => { load() }, [])
+
+  const { query, setQuery, filtered: visibleEmployees } = useSearch(employees, [
+    (e) => `${e.first_name} ${e.last_name}`,
+    (e) => e.email,
+    (e) => e.department,
+    (e) => e.job_title,
+    (e) => e.status,
+  ])
 
   const openCreate = () => { setEditing(null); setForm(EMPTY); setOpen(true) }
   const openEdit   = (emp) => {
@@ -75,13 +86,16 @@ export default function EmployeesPage() {
 
   return (
     <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3} gap={2} flexWrap="wrap">
         <Typography variant="h5" fontWeight={700}>Employees</Typography>
-        {canWrite() ? (
-          <Button variant="contained" startIcon={<Add />} onClick={openCreate}>Add Employee</Button>
-        ) : (
-          <Chip icon={<LockOutlined />} label="Read-only access" variant="outlined" color="default" />
-        )}
+        <Box display="flex" alignItems="center" gap={1.5} flexWrap="wrap">
+          <SearchBar value={query} onChange={setQuery} placeholder="Search employees…" />
+          {canWrite() ? (
+            <Button variant="contained" startIcon={<Add />} onClick={openCreate}>Add Employee</Button>
+          ) : (
+            <Chip icon={<LockOutlined />} label="Read-only access" variant="outlined" color="default" />
+          )}
+        </Box>
       </Box>
 
       {error && (
@@ -112,14 +126,14 @@ export default function EmployeesPage() {
                 ))}
               </TableRow>
             ))}
-            {!loading && (employees ?? []).length === 0 && !error && (
+            {!loading && visibleEmployees.length === 0 && !error && (
               <TableRow>
                 <TableCell colSpan={showActions ? 6 : 5} align="center" sx={{ color: '#9CA3AF', py: 4 }}>
-                  No employees found
+                  {query ? `No results for "${query}"` : 'No employees found'}
                 </TableCell>
               </TableRow>
             )}
-            {!loading && (employees ?? []).map((emp) => (
+            {!loading && visibleEmployees.map((emp) => (
               <TableRow key={emp.id} hover>
                 <TableCell>{emp.first_name} {emp.last_name}</TableCell>
                 <TableCell>{emp.email}</TableCell>

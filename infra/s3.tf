@@ -9,7 +9,7 @@ resource "aws_s3_bucket" "hot_reload" {
 }
 
 resource "aws_s3_bucket" "this" {
-  bucket        = format("%s-website-%s", var.aws_project, local.app_id)
+  bucket        = format("%s-website-%s-%s", var.aws_project, local.app_id, data.aws_caller_identity.this.account_id)
   force_destroy = true
 
   lifecycle {

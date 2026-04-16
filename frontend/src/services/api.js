@@ -33,6 +33,7 @@ export const getMe    = ()     => api.get('/auth/me')
 
 // Employees
 export const getEmployees    = (params)   => api.get('/employees', { params })
+export const getAllEmployees = ()          => api.get('/employees', { params: { status: 'all' } })
 export const getEmployee     = (id)       => api.get(`/employees/${id}`)
 export const createEmployee  = (data)     => api.post('/employees', data)
 export const updateEmployee  = (id, data) => api.put(`/employees/${id}`, data)

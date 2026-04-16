@@ -51,7 +51,7 @@ export default function Layout() {
           <Assessment sx={{ color: '#fff', fontSize: 20 }} />
         </Box>
         <Typography variant="h6" color="white" fontWeight={800} noWrap letterSpacing="0.01em" fontSize="0.95rem">
-          EPDM Platform
+          ACME
         </Typography>
       </Box>
 

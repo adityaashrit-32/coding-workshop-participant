@@ -1,4 +1,6 @@
 provider "aws" {
+  region = "ap-south-1"
+
   default_tags {
     tags = {
       application = "coding-workshop"
@@ -14,8 +16,9 @@ provider "aws" {
 
 terraform {
   backend "s3" {
-    bucket = "coding-workshop-us-east-1-abcd1234"
+    bucket = "coding-workshop-tfstate-135306227752"
     key    = "terraform/terraform.tfstate"
+    region = "ap-south-1"
   }
 
   required_providers {

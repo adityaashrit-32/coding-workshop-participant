@@ -8,12 +8,17 @@ locals {
     for rt in data.aws_route_table.this :
     rt.id if length([for route in rt.routes : route if startswith(route.gateway_id, "igw-")]) > 0
   ]
-  public_subnet_ids = sort(distinct(flatten([
+  public_subnet_ids = length(sort(distinct(flatten([
     for rt_id in local.public_route_table_ids : [
       for assoc in data.aws_route_table.this[rt_id].associations :
       assoc.subnet_id if assoc.subnet_id != ""
     ]
-  ])))
+  ])))) > 0 ? sort(distinct(flatten([
+    for rt_id in local.public_route_table_ids : [
+      for assoc in data.aws_route_table.this[rt_id].associations :
+      assoc.subnet_id if assoc.subnet_id != ""
+    ]
+  ]))) : sort(tolist(data.aws_subnets.this.ids))
   private_subnet_ids = sort(tolist(setsubtract(data.aws_subnets.this.ids, local.public_subnet_ids)))
   java_dirs = [
     for file in fileset(format("%s/../backend", path.module), "*/pom.xml") :
@@ -78,11 +83,11 @@ locals {
     APP_ROLE      = format("arn:%s:iam::%s:role/%s-assume-%s", data.aws_partition.this.partition, data.aws_caller_identity.this.account_id, var.aws_project, local.app_id)
     APP_REGION    = data.aws_region.this.region
     IS_LOCAL      = data.aws_caller_identity.this.id == "000000000000" ? "true" : "false"
-    POSTGRES_HOST = data.aws_caller_identity.this.id == "000000000000" ? coalesce(try(trimspace(var.aws_postgres_host), ""), "172.17.0.1") : element(aws_rds_cluster.this.*.endpoint, 0)
-    POSTGRES_PORT = data.aws_caller_identity.this.id == "000000000000" ? "5432" : element(aws_rds_cluster.this.*.port, 0)
-    POSTGRES_NAME = data.aws_caller_identity.this.id == "000000000000" ? "postgres" : element(aws_rds_cluster.this.*.database_name, 0)
-    POSTGRES_USER = data.aws_caller_identity.this.id == "000000000000" ? "postgres" : element(aws_rds_cluster.this.*.master_username, 0)
-    POSTGRES_PASS = data.aws_caller_identity.this.id == "000000000000" ? "postgres123" : element(aws_rds_cluster.this.*.master_password, 0)
+    POSTGRES_HOST = data.aws_caller_identity.this.id == "000000000000" ? coalesce(try(trimspace(var.aws_postgres_host), ""), "172.17.0.1") : coalesce(try(trimspace(var.aws_postgres_host), ""), "localhost")
+    POSTGRES_PORT = data.aws_caller_identity.this.id == "000000000000" ? "5432" : coalesce(try(trimspace(var.aws_postgres_port), ""), "5432")
+    POSTGRES_NAME = data.aws_caller_identity.this.id == "000000000000" ? "postgres" : coalesce(try(trimspace(var.aws_postgres_name), ""), "postgres")
+    POSTGRES_USER = data.aws_caller_identity.this.id == "000000000000" ? "postgres" : coalesce(try(trimspace(var.aws_postgres_user), ""), "postgres")
+    POSTGRES_PASS = data.aws_caller_identity.this.id == "000000000000" ? "postgres123" : coalesce(try(trimspace(var.aws_postgres_pass), ""), "postgres123")
     MONGO_HOST    = data.aws_caller_identity.this.id == "000000000000" ? coalesce(try(trimspace(var.aws_mongo_host), ""), "172.17.0.1") : try(element(aws_docdb_cluster.this.*.endpoint, 0), "")
     MONGO_PORT    = data.aws_caller_identity.this.id == "000000000000" ? "27017" : try(element(aws_docdb_cluster.this.*.port, 0), "")
     MONGO_NAME    = data.aws_caller_identity.this.id == "000000000000" ? "mongo" : try(element(aws_docdb_cluster.this.*.database_name, 0), "")
